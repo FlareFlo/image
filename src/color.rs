@@ -1,7 +1,7 @@
 use num_traits::{NumCast, ToPrimitive, Zero};
 use std::ops::{Index, IndexMut};
 use std::simd::num::SimdFloat;
-use std::simd::{Simd, StdFloat};
+use std::simd::{Mask, Simd, StdFloat};
 
 use crate::traits::{Enlargeable, Pixel, Primitive};
 
@@ -419,7 +419,7 @@ impl FromPrimitive<f32> for u8 {
             "Input and output slices must have the same length."
         );
 
-        const LANES: usize = 16;
+        const LANES: usize = 8;
         let mut i = 0;
 
         let zero = Simd::splat(0.0);
@@ -1046,18 +1046,32 @@ mod tests {
     #[test]
     fn simd_bulk_primitve_speed() {
         let bufsize = 4096 * 4096;
-        let input = vec![0.0; bufsize];
+        let mut input = (0..bufsize).map(|i| i as f32).collect::<Vec<_>>();
+        input[4096..(4096 + 6)].copy_from_slice(&[
+            f32::NAN,
+            f32::NEG_INFINITY,
+            f32::INFINITY,
+            f32::EPSILON,
+            f32::MAX,
+            f32::MIN,
+        ]);
 
         let mut expected_output = vec![0; bufsize];
         let scalar = Instant::now();
-        input.iter().enumerate().for_each(|(i,e)| expected_output[i] = u8::from_primitive(*e));
+        input
+            .iter()
+            .enumerate()
+            .for_each(|(i, e)| expected_output[i] = u8::from_primitive(*e));
         println!("Scalar: {:?}", scalar.elapsed());
 
+        let simd_input = input.clone();
         let mut output = vec![0; bufsize];
         let simd = Instant::now();
-        u8::from_bulk_primitive(&input, &mut output);
+        u8::from_bulk_primitive(&simd_input, &mut output);
         println!("Simd: {:?}", simd.elapsed());
 
         assert_eq!(expected_output, output);
+        drop(input);
+        drop(simd_input);
     }
 }
