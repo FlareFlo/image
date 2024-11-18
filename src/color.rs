@@ -1,6 +1,7 @@
-use std::ops::{Index, IndexMut};
-
 use num_traits::{NumCast, ToPrimitive, Zero};
+use std::ops::{Index, IndexMut};
+use std::simd::num::SimdFloat;
+use std::simd::{Simd, StdFloat};
 
 use crate::traits::{Enlargeable, Pixel, Primitive};
 
@@ -373,6 +374,18 @@ define_colors! {
 pub trait FromPrimitive<Component> {
     /// Converts from any pixel component type to this type.
     fn from_primitive(component: Component) -> Self;
+
+    /// Bulk operation intended for conversion specific SIMD or SWAR.
+    /// Defaults to the regular iterative conversion.
+    fn from_bulk_primitive(input: &[Component], output: &mut [Self])
+    where
+        Self: Sized,
+        Component: Copy,
+    {
+        for (i, &val) in input.iter().enumerate() {
+            output[i] = Self::from_primitive(val);
+        }
+    }
 }
 
 impl<T: Primitive> FromPrimitive<T> for T {
@@ -397,6 +410,45 @@ fn normalize_float(float: f32, max: f32) -> f32 {
 impl FromPrimitive<f32> for u8 {
     fn from_primitive(float: f32) -> Self {
         NumCast::from(normalize_float(float, u8::MAX as f32)).unwrap()
+    }
+
+    fn from_bulk_primitive(input: &[f32], output: &mut [Self]) {
+        assert_eq!(
+            input.len(),
+            output.len(),
+            "Input and output slices must have the same length."
+        );
+
+        const LANES: usize = 16;
+        let mut i = 0;
+
+        let zero = Simd::splat(0.0);
+        let one = Simd::splat(1.0);
+        let max = Simd::splat(u8::MAX as f32);
+
+        while i + LANES <= input.len() {
+            // Load input into SIMD vector.
+            let simd_input = Simd::from_slice(&input[i..i + LANES]);
+
+            // Handle NaN explicitly: if a value is NaN, replace it with 1.0.
+            let is_nan = simd_input.is_nan();
+            let clean_input = is_nan.select(one, simd_input);
+
+            // Clamp and normalize values
+            let clamped = clean_input.simd_clamp(zero, one);
+            let normalized = (clamped * max).round();
+
+            // Cast to `u8` and store into the output array.
+            let simd_output: Simd<u8, LANES> = normalized.cast();
+            output[i..(i + LANES)].copy_from_slice(simd_output.as_array());
+
+            i += LANES;
+        }
+
+        // Fallback to scalar for any remaining elements.
+        for j in i..input.len() {
+            output[j] = Self::from_primitive(input[j])
+        }
     }
 }
 
@@ -856,7 +908,8 @@ impl<T: Primitive> Invert for Rgb<T> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Luma, LumaA, Pixel, Rgb, Rgba};
+    use super::{FromPrimitive, Luma, LumaA, Pixel, Rgb, Rgba};
+    use std::time::Instant;
 
     #[test]
     fn test_apply_with_alpha_rgba() {
@@ -988,5 +1041,23 @@ mod tests {
         let pixel = Rgb::from([13, 13, 13]);
         let Luma([luma]) = pixel.to_luma();
         assert_eq!(luma, 13);
+    }
+
+    #[test]
+    fn simd_bulk_primitve_speed() {
+        let bufsize = 4096 * 4096;
+        let input = vec![0.0; bufsize];
+
+        let mut expected_output = vec![0; bufsize];
+        let scalar = Instant::now();
+        input.iter().enumerate().for_each(|(i,e)| expected_output[i] = u8::from_primitive(*e));
+        println!("Scalar: {:?}", scalar.elapsed());
+
+        let mut output = vec![0; bufsize];
+        let simd = Instant::now();
+        u8::from_bulk_primitive(&input, &mut output);
+        println!("Simd: {:?}", simd.elapsed());
+
+        assert_eq!(expected_output, output);
     }
 }
