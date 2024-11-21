@@ -1,7 +1,8 @@
 use num_traits::{NumCast, ToPrimitive, Zero};
+use std::io::{Write};
 use std::ops::{Index, IndexMut};
 use std::simd::num::SimdFloat;
-use std::simd::{Mask, Simd, StdFloat};
+use std::simd::{Simd, StdFloat};
 
 use crate::traits::{Enlargeable, Pixel, Primitive};
 
@@ -500,6 +501,15 @@ impl FromPrimitive<u8> for u16 {
 pub trait FromColor<Other> {
     /// Changes `self` to represent `Other` in the color space of `Self`
     fn from_color(&mut self, _: &Other);
+
+    fn from_color_bulk(output: &mut [Self], input: &[Other])
+    where
+        Self: Sized,
+    {
+        for (i, val) in input.iter().enumerate() {
+            Self::from_color(&mut output[i], val);
+        }
+    }
 }
 
 /// Copy-based conversions to target pixel types using `FromColor`.
@@ -699,6 +709,26 @@ where
         own[0] = T::from_primitive(other[0]);
         own[1] = T::from_primitive(other[1]);
         own[2] = T::from_primitive(other[2]);
+    }
+
+    fn from_color_bulk(output: &mut [Self], input: &[Rgb<S>])
+    where
+        Self: Sized,
+    {
+        assert_eq!(
+            input.len(),
+            output.len(),
+            "Input and output slices must have the same length."
+        );
+        // Safe because `Foo` is `#[repr(transparent)]`
+        let input: &[S] =
+            unsafe { std::slice::from_raw_parts(input.as_ptr() as *const S, input.len()) };
+
+        // Same goes for T
+        let output: &mut [T] =
+            unsafe { std::slice::from_raw_parts_mut(output.as_ptr() as *mut T, output.len()) };
+
+        T::from_bulk_primitive(input, output);
     }
 }
 
@@ -908,7 +938,7 @@ impl<T: Primitive> Invert for Rgb<T> {
 
 #[cfg(test)]
 mod tests {
-    use super::{FromPrimitive, Luma, LumaA, Pixel, Rgb, Rgba};
+    use super::{FromColor, FromPrimitive, Luma, LumaA, Pixel, Rgb, Rgba};
     use std::time::Instant;
 
     #[test]
@@ -1044,7 +1074,7 @@ mod tests {
     }
 
     #[test]
-    fn simd_bulk_primitve_speed() {
+    fn simd_bulk_color_primitve_speed() {
         let bufsize = 4096 * 4096;
         let mut input = (0..bufsize).map(|i| i as f32).collect::<Vec<_>>();
         input[4096..(4096 + 6)].copy_from_slice(&[
@@ -1068,6 +1098,29 @@ mod tests {
         let mut output = vec![0; bufsize];
         let simd = Instant::now();
         u8::from_bulk_primitive(&simd_input, &mut output);
+        println!("Simd: {:?}", simd.elapsed());
+
+        assert_eq!(expected_output, output);
+        drop(input);
+        drop(simd_input);
+    }
+
+    #[test]
+    fn simd_bulk_pixel_primitve_speed() {
+        let bufsize = 4096 * 4096;
+        let mut input: Vec<Rgb<f32>> = vec![Rgb::from([0.0, 0.0, 0.0]); bufsize];
+
+        let mut expected_output = vec![Rgb::from([0, 0, 0]); bufsize];
+        let scalar = Instant::now();
+        for (i, val) in input.iter().enumerate() {
+            Rgb::<u8>::from_color(&mut expected_output[i], val);
+        }
+        println!("Scalar: {:?}", scalar.elapsed());
+
+        let simd_input = input.clone();
+        let mut output: Vec<Rgb<u8>> = vec![Rgb::from([0, 0, 0]); bufsize];
+        let simd = Instant::now();
+        Rgb::<u8>::from_color_bulk(output.as_mut_slice(), &input);
         println!("Simd: {:?}", simd.elapsed());
 
         assert_eq!(expected_output, output);

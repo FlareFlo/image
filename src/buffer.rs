@@ -1,4 +1,5 @@
 //! Contains the generic `ImageBuffer` struct.
+use crate::color;
 use num_traits::Zero;
 use std::fmt;
 use std::marker::PhantomData;
@@ -1377,7 +1378,7 @@ impl<Container, FromType: Pixel, ToType: Pixel>
     ConvertBuffer<ImageBuffer<ToType, Vec<ToType::Subpixel>>> for ImageBuffer<FromType, Container>
 where
     Container: Deref<Target = [FromType::Subpixel]>,
-    ToType: FromColor<FromType>,
+    <ToType as Pixel>::Subpixel: color::FromPrimitive<<FromType as Pixel>::Subpixel>,
 {
     /// # Examples
     /// Convert RGB image to gray image.
@@ -1393,12 +1394,14 @@ where
     /// let gray_image: GrayImage = image.convert();
     /// ```
     fn convert(&self) -> ImageBuffer<ToType, Vec<ToType::Subpixel>> {
-        let mut buffer: ImageBuffer<ToType, Vec<ToType::Subpixel>> =
-            ImageBuffer::new(self.width, self.height);
-        for (to, from) in buffer.pixels_mut().zip(self.pixels()) {
-            to.from_color(from)
-        }
-        buffer
+        let output: ImageBuffer<ToType, Vec<ToType::Subpixel>> = ImageBuffer::new(self.width, self.height);
+
+        let mut raw_output: Vec<ToType::Subpixel> = output.into_vec();
+        let input: Vec<FromType::Subpixel> = self.as_raw().to_vec();
+
+        use crate::color::FromPrimitive;
+        ToType::Subpixel::from_bulk_primitive(input.as_slice(), raw_output.as_mut_slice());
+        ImageBuffer::from_vec(self.width, self.height, raw_output).expect("infallible")
     }
 }
 
