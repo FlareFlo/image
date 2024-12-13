@@ -1,3 +1,5 @@
+use crate::simd_color_conversion::bulk_impl;
+use crate::simd_color_conversion::same_sized_impl;
 use std::ops::{Index, IndexMut};
 
 use num_traits::{NumCast, ToPrimitive, Zero};
@@ -424,6 +426,18 @@ define_colors! {
 pub trait FromPrimitive<Component> {
     /// Converts from any pixel component type to this type.
     fn from_primitive(component: Component) -> Self;
+
+    /// Bulk operation intended for conversion specific SIMD or SWAR.
+    /// Defaults to the regular iterative conversion.
+    fn from_bulk_primitive(input: &[Component], output: &mut [Self])
+    where
+        Self: Sized,
+        Component: Copy,
+    {
+        for (i, &val) in input.iter().enumerate() {
+            output[i] = Self::from_primitive(val);
+        }
+    }
 }
 
 impl<T: Primitive> FromPrimitive<T> for T {
@@ -493,6 +507,10 @@ pub trait FromColor<Other> {
     /// Changes `self` to represent `Other` in the color space of `Self`
     #[allow(clippy::wrong_self_convention)]
     fn from_color(&mut self, _: &Other);
+
+    fn from_color_bulk(output: &mut [Self], input: &[Other])
+    where
+        Self: Sized;
 }
 
 /// Copy-based conversions to target pixel types using `FromColor`.
@@ -541,6 +559,8 @@ where
         let other = other.channels();
         own[0] = T::from_primitive(other[0]);
     }
+
+    bulk_impl!(Luma<S>);
 }
 
 impl<S: Primitive, T: Primitive> FromColor<LumaA<S>> for Luma<T>
@@ -550,6 +570,8 @@ where
     fn from_color(&mut self, other: &LumaA<S>) {
         self.channels_mut()[0] = T::from_primitive(other.channels()[0]);
     }
+
+    bulk_impl!(LumaA<S>);
 }
 
 impl<S: Primitive + Enlargeable, T: Primitive> FromColor<Rgb<S>> for Luma<T>
@@ -561,6 +583,8 @@ where
         let rgb = other.channels();
         gray[0] = T::from_primitive(rgb_to_luma(rgb));
     }
+
+    bulk_impl!(Rgb<S>);
 }
 
 impl<S: Primitive + Enlargeable, T: Primitive> FromColor<Rgba<S>> for Luma<T>
@@ -573,6 +597,8 @@ where
         let l = rgb_to_luma(rgb);
         gray[0] = T::from_primitive(l);
     }
+
+    bulk_impl!(Rgba<S>);
 }
 
 // `FromColor` for LumaA
@@ -587,6 +613,8 @@ where
         own[0] = T::from_primitive(other[0]);
         own[1] = T::from_primitive(other[1]);
     }
+
+    bulk_impl!(LumaA<S>);
 }
 
 impl<S: Primitive + Enlargeable, T: Primitive> FromColor<Rgb<S>> for LumaA<T>
@@ -599,6 +627,8 @@ where
         gray_a[0] = T::from_primitive(rgb_to_luma(rgb));
         gray_a[1] = T::DEFAULT_MAX_VALUE;
     }
+
+    bulk_impl!(Rgb<S>);
 }
 
 impl<S: Primitive + Enlargeable, T: Primitive> FromColor<Rgba<S>> for LumaA<T>
@@ -611,6 +641,8 @@ where
         gray_a[0] = T::from_primitive(rgb_to_luma(rgba));
         gray_a[1] = T::from_primitive(rgba[3]);
     }
+
+    bulk_impl!(Rgba<S>);
 }
 
 impl<S: Primitive, T: Primitive> FromColor<Luma<S>> for LumaA<T>
@@ -622,6 +654,8 @@ where
         gray_a[0] = T::from_primitive(other.channels()[0]);
         gray_a[1] = T::DEFAULT_MAX_VALUE;
     }
+
+    bulk_impl!(Luma<S>);
 }
 
 // `FromColor` for RGBA
@@ -638,6 +672,8 @@ where
         own[2] = T::from_primitive(other[2]);
         own[3] = T::from_primitive(other[3]);
     }
+
+    bulk_impl!(Rgba<S>);
 }
 
 impl<S: Primitive, T: Primitive> FromColor<Rgb<S>> for Rgba<T>
@@ -652,6 +688,8 @@ where
         rgba[2] = T::from_primitive(rgb[2]);
         rgba[3] = T::DEFAULT_MAX_VALUE;
     }
+
+    bulk_impl!(Rgb<S>);
 }
 
 impl<S: Primitive, T: Primitive> FromColor<LumaA<S>> for Rgba<T>
@@ -666,6 +704,8 @@ where
         rgba[2] = T::from_primitive(gray[0]);
         rgba[3] = T::from_primitive(gray[1]);
     }
+
+    bulk_impl!(LumaA<S>);
 }
 
 impl<S: Primitive, T: Primitive> FromColor<Luma<S>> for Rgba<T>
@@ -680,6 +720,8 @@ where
         rgba[2] = T::from_primitive(gray);
         rgba[3] = T::DEFAULT_MAX_VALUE;
     }
+
+    bulk_impl!(Luma<S>);
 }
 
 // `FromColor` for RGB
@@ -695,6 +737,8 @@ where
         own[1] = T::from_primitive(other[1]);
         own[2] = T::from_primitive(other[2]);
     }
+
+    bulk_impl!(Rgb<S>, same_sized_impl::<Rgb<S>, Rgb<T>, S, T>);
 }
 
 impl<S: Primitive, T: Primitive> FromColor<Rgba<S>> for Rgb<T>
@@ -708,6 +752,8 @@ where
         rgb[1] = T::from_primitive(rgba[1]);
         rgb[2] = T::from_primitive(rgba[2]);
     }
+
+    bulk_impl!(Rgba<S>);
 }
 
 impl<S: Primitive, T: Primitive> FromColor<LumaA<S>> for Rgb<T>
@@ -721,6 +767,8 @@ where
         rgb[1] = T::from_primitive(gray);
         rgb[2] = T::from_primitive(gray);
     }
+
+    bulk_impl!(LumaA<S>);
 }
 
 impl<S: Primitive, T: Primitive> FromColor<Luma<S>> for Rgb<T>
@@ -734,6 +782,8 @@ where
         rgb[1] = T::from_primitive(gray);
         rgb[2] = T::from_primitive(gray);
     }
+
+    bulk_impl!(Luma<S>);
 }
 
 /// Blends a color inter another one

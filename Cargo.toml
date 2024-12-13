@@ -91,6 +91,7 @@ color_quant = ["dep:color_quant"] # Enables color quantization
 avif-native = ["dep:mp4parse", "dep:dav1d"] # Enable native dependency libdav1d
 benchmarks = [] # Build some inline benchmarks. Useful only during development (requires nightly Rust)
 serde = ["dep:serde"]
+simd = []
 
 [[bench]]
 path = "benches/decode.rs"

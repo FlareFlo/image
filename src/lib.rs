@@ -313,6 +313,7 @@ pub mod io {
     /// Deprecated re-export of `LimitSupport`
     pub type LimitSupport = super::LimitSupport;
 }
+pub(crate) mod simd_color_conversion;
 mod traits;
 mod utils;
 
