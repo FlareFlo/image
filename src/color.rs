@@ -383,6 +383,7 @@ pub trait FromPrimitive<Component> {
         Self: Sized,
         Component: Copy,
     {
+        assert_eq!(input.len(), output.len());
         for (i, &val) in input.iter().enumerate() {
             output[i] = Self::from_primitive(val);
         }
@@ -720,6 +721,7 @@ where
             output.len(),
             "Input and output slices must have the same length."
         );
+        // This doesnt work, channel count differs
         // Safe because `Foo` is `#[repr(transparent)]`
         let input: &[S] =
             unsafe { std::slice::from_raw_parts(input.as_ptr() as *const S, input.len()) };

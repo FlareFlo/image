@@ -289,6 +289,7 @@ mod dynimage;
 mod image;
 mod traits;
 mod utils;
+mod simd_conversions;
 
 // Can't use the macro-call itself within the `doc` attribute. So force it to eval it as part of
 // the macro invocation.

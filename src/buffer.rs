@@ -1394,6 +1394,7 @@ where
     /// let gray_image: GrayImage = image.convert();
     /// ```
     fn convert(&self) -> ImageBuffer<ToType, Vec<ToType::Subpixel>> {
+        // This doesnt work, channel count differs
         let output: ImageBuffer<ToType, Vec<ToType::Subpixel>> = ImageBuffer::new(self.width, self.height);
 
         let mut raw_output: Vec<ToType::Subpixel> = output.into_vec();
